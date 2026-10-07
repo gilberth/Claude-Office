@@ -339,7 +339,10 @@ app.post('/codex-event', (req, res) => {
   codexTelemetry.received++
   codexTelemetry.lastHookAt = Date.now()
   codexTelemetry.lastHookEvent = hookName
-  codexTelemetry.lastTool = clampString(payload?.tool_name, 64) ?? null
+  // Preserve the most recent actual tool after Stop/SessionEnd.
+  if (typeof payload?.tool_name === 'string' && payload.tool_name.trim()) {
+    codexTelemetry.lastTool = clampString(payload.tool_name, 64)
+  }
   codexTelemetry.lastAgent = typeof payload?.agent_id === 'string' && payload.agent_id
     ? 'subagent'
     : 'main'
