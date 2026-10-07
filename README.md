@@ -1,6 +1,6 @@
-# Claude Office
+# Agent Office — Claude + Codex
 
-A pixel art virtual office that visualizes your AI agents working in real-time. Watch Claude Code agents spawn, sit at desks, take coffee breaks, and chat in a Slack-inspired office chat panel — all rendered in an isometric pixel art office.
+A pixel art virtual office that visualizes AI agents working in real time. This fork supports both Claude Code and OpenAI Codex App/CLI hooks, while keeping the original isometric office, agent animations, MCP visualization, and chat panel.
 
 ## Update — Dunder Mifflin mode
 
@@ -125,7 +125,7 @@ Claude Code ──hook──> Express Server ──WebSocket──> React Fronte
 
 ```bash
 # Clone
-git clone https://github.com/W17ant/Claude-Office.git
+git clone https://github.com/gilberth/Claude-Office.git
 cd Claude-Office
 
 # Install
@@ -166,6 +166,34 @@ Add the hook to `~/.claude/settings.json`:
 ```
 
 Now spawn agents in Claude Code and watch them appear in the office.
+
+### Connect Codex App / Codex CLI
+
+This fork also supports OpenAI Codex hooks. Codex App and Codex CLI use the same user hook configuration under `$CODEX_HOME/hooks.json` (normally `~/.codex/hooks.json`).
+
+Install the Agent Office bridge:
+
+```bash
+bash hooks/install-codex-hooks.sh
+```
+
+Then restart Codex App (or start a fresh Codex CLI session) and run Agent Office:
+
+```bash
+bash scripts/start-office.sh
+```
+
+The Codex bridge listens to:
+
+- `SubagentStart` / `SubagentStop` — create and complete office workers
+- `PreToolUse` / `PostToolUse` — update what each subagent is doing
+- `PermissionRequest` — show that a subagent is waiting for approval
+- `SessionStart` / `SessionEnd` / `Stop` / `Interrupt` — installed for lifecycle observation; session-level events are not represented as fake workers
+- MCP tools named `mcp__<server>__<tool>` — reuse the existing MCP visualization
+
+The installer preserves existing hooks and writes a timestamped backup before changing `~/.codex/hooks.json`.
+
+Codex hook payloads include stable `agent_id`, `agent_type`, `session_id`, `turn_id`, and `model` fields. Agent Office uses `agent_id` as the worker identity, so parallel subagents can be tracked independently.
 
 ## Customise Your Character
 

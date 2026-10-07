@@ -3,7 +3,7 @@
  *
  * Runs on port 3334.
  * - React frontend connects via ws://localhost:3334/ws
- * - Claude Code hook script POSTs to http://localhost:3334/event
+ * - Claude Code / Codex hook bridges POST to http://localhost:3334/event
  * - GET /roster returns discovered MCP servers
  */
 
@@ -67,19 +67,24 @@ function isAllowedOrigin(origin) {
 // ---------------------------------------------------------------------------
 
 /**
- * Read ~/.claude/settings.json and any .claude.json in cwd to discover
- * configured MCP servers. Returns an array of server-name strings.
+ * Discover configured MCP servers from Claude Code and Codex.
+ *
+ * Claude uses JSON settings. Codex uses TOML sections such as:
+ *   [mcp_servers.github]
+ *
+ * We only need server names for the office roster, so a small section parser
+ * avoids adding a TOML dependency to the server.
  */
 function discoverMcpServers() {
   const servers = new Set()
 
-  const candidates = [
+  const jsonCandidates = [
     join(homedir(), '.claude', 'settings.json'),
     join(homedir(), '.claude.json'),
     join(process.cwd(), '.claude.json'),
   ]
 
-  for (const filePath of candidates) {
+  for (const filePath of jsonCandidates) {
     if (!existsSync(filePath)) continue
     try {
       const raw = readFileSync(filePath, 'utf8')
@@ -90,6 +95,27 @@ function discoverMcpServers() {
       }
     } catch {
       // Malformed JSON or unreadable file — skip silently
+    }
+  }
+
+  const codexHome = process.env.CODEX_HOME || join(homedir(), '.codex')
+  const tomlCandidates = [
+    join(codexHome, 'config.toml'),
+    join(process.cwd(), '.codex', 'config.toml'),
+  ]
+
+  for (const filePath of tomlCandidates) {
+    if (!existsSync(filePath)) continue
+    try {
+      const raw = readFileSync(filePath, 'utf8')
+      const sectionRe = /^\s*\[mcp_servers\.([^\]]+)\]\s*$/gm
+      let match
+      while ((match = sectionRe.exec(raw)) !== null) {
+        const name = match[1].trim().replace(/^["']|["']$/g, '')
+        if (name) servers.add(name)
+      }
+    } catch {
+      // Unreadable TOML — skip silently
     }
   }
 
@@ -603,7 +629,7 @@ httpServer.listen(PORT, '127.0.0.1', () => {
   if (mcpServers.length > 0) {
     console.log(`  MCP servers discovered: ${mcpServers.join(', ')}`)
   } else {
-    console.log('  No MCP servers found in ~/.claude/settings.json')
+    console.log('  No MCP servers found in Claude/Codex configuration')
   }
   console.log()
 })
