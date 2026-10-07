@@ -15,8 +15,14 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { execFile } from 'child_process'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
 import { addMessage, getMessages, markSeen, addReaction } from './chat-db.js'
 import db from './chat-db.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const DIST_DIR = join(__dirname, '..', 'dist')
 
 function sendNotification(title, msg) {
   if (process.platform !== 'darwin') return
@@ -172,6 +178,13 @@ function validateEvent(body) {
 
 const app = express()
 app.use(express.json({ limit: '10kb' }))
+
+// Serve the production renderer from the same localhost origin as the API.
+// This keeps all /rooms, /sprites and other public asset URLs working inside
+// the packaged Electron app without relying on file:// path semantics.
+if (existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR))
+}
 
 // CORS for local dev — only allow known localhost origins
 app.use((req, res, next) => {
