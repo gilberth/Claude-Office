@@ -83,15 +83,14 @@ function waitForServer(retries = 30, intervalMs = 300) {
 
 /**
  * Start the Express/WebSocket server as a child process.
- * In packaged builds the server files are placed in process.resourcesPath/server.
+ * In packaged builds the server remains inside app.asar so it can resolve the
+ * bundled node_modules without requiring a system Node.js installation.
  * In dev the files are at <project-root>/server/index.js.
  */
 function startServer() {
   const isDev = !app.isPackaged
 
-  const serverEntry = isDev
-    ? path.join(__dirname, '../server/index.js')
-    : path.join(process.resourcesPath, 'server', 'index.js')
+  const serverEntry = path.join(__dirname, '../server/index.js')
 
   const runtime = isDev ? 'node' : process.execPath
   const env = isDev
