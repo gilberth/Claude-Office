@@ -1,6 +1,6 @@
-# Claude Office
+# Agent Office — Claude + Codex
 
-A pixel art virtual office that visualizes your AI agents working in real-time. Watch Claude Code agents spawn, sit at desks, take coffee breaks, and chat in a Slack-inspired office chat panel — all rendered in an isometric pixel art office.
+A pixel art virtual office that visualizes AI agents working in real time. This fork supports both Claude Code and OpenAI Codex App/CLI hooks, while keeping the original isometric office, agent animations, MCP visualization, and chat panel.
 
 ## Update — Dunder Mifflin mode
 
@@ -125,7 +125,7 @@ Claude Code ──hook──> Express Server ──WebSocket──> React Fronte
 
 ```bash
 # Clone
-git clone https://github.com/W17ant/Claude-Office.git
+git clone https://github.com/gilberth/Claude-Office.git
 cd Claude-Office
 
 # Install
