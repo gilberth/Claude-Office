@@ -15,7 +15,13 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { execFile } from 'child_process'
-import { fileURLToPath } from 'url'
+import { addMessage, getMessages, markSeen, addReaction } from './chat-db.js'
+import db from './chat-db.js'
+
+function sendNotification(title, msg) {
+  if (process.platform !== 'darwin') return
+  try {
+    const safeTitle = String(title).replace(/[\\"]/g, '\\import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { addMessage, getMessages, markSeen, addReaction } from './chat-db.js'
 import db from './chat-db.js'
@@ -27,6 +33,28 @@ const NOTIFY_SCRIPT = join(__dirname, '..', 'scripts', 'notify.sh')
 function sendNotification(title, msg) {
   try {
     const child = execFile('bash', [NOTIFY_SCRIPT, title, msg], { timeout: 3000 })
+    child.unref()
+  } catch {}
+}')
+    const safeMsg = String(msg).replace(/[\\"]/g, '\\import { fileURLToPath } from 'url'
+import { dirname } from 'path'
+import { addMessage, getMessages, markSeen, addReaction } from './chat-db.js'
+import db from './chat-db.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const NOTIFY_SCRIPT = join(__dirname, '..', 'scripts', 'notify.sh')
+
+function sendNotification(title, msg) {
+  try {
+    const child = execFile('bash', [NOTIFY_SCRIPT, title, msg], { timeout: 3000 })
+    child.unref()
+  } catch {}
+}')
+    const child = execFile('/usr/bin/osascript', [
+      '-e',
+      `display notification "${safeMsg}" with title "${safeTitle}"`,
+    ], { timeout: 3000 })
     child.unref()
   } catch {}
 }
