@@ -121,6 +121,21 @@ Claude Code ──hook──> Express Server ──WebSocket──> React Fronte
                    Chat AI Watcher ──claude -p──> Reply
 ```
 
+## Download for macOS
+
+GitHub Actions builds a self-contained Apple Silicon DMG. The packaged app includes the UI, local WebSocket/Express server, SQLite support, and the Codex relay — users do **not** need Node.js, Python, npm, or git.
+
+After installing the DMG:
+
+1. Drag **Agent Office.app** to Applications.
+2. Open Agent Office.
+3. Choose **Connect Codex** when prompted.
+4. Restart Codex App or start a fresh Codex CLI session.
+
+Every push to `main` produces a downloadable workflow artifact. Tags matching `v*` also publish the DMG to GitHub Releases.
+
+> Current builds are unsigned. macOS may require **Open → Open** from Finder on first launch until Apple Developer signing/notarization is configured.
+
 ## Quick Start
 
 ```bash
