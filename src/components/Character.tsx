@@ -127,9 +127,19 @@ const Character: React.FC<CharacterProps> = ({ agent, idleDurationMs = 0, zIndex
   const spriteSrc = getSpritePath(agent.id, agent.role, charBase, directionRef.current)
   void theme
 
-  const effectSrc = isTyping
+  // Distinguish real Codex hook activity from ambient office animation:
+  // the terminal/editor/search/think hook statuses display a typing indicator
+  // for as long as that particular agent is actively working.
+  const activity = (agent.statusText ?? '').toLowerCase()
+  const hasRealWork = agent.state === 'working' &&
+    /^(using |editing |reading |searching |researching|thinking about)/.test(activity)
+  const waitingForApproval = agent.state === 'working' && activity.startsWith('waiting for approval')
+
+  const effectSrc = isTyping || hasRealWork
     ? '/sprites/effects/typing.png'
-    : getEffect(agent.state, idleDurationMs, agent.statusText, agent.id, agent.task, agent.role)
+    : waitingForApproval
+      ? '/sprites/effects/star.png'
+      : getEffect(agent.state, idleDurationMs, agent.statusText, agent.id, agent.task, agent.role)
 
   return (
     <div
