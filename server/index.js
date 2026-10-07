@@ -663,7 +663,7 @@ function processEvent(body) {
       // Track MCP agents transiently
       activeAgents.set(record.id, record)
       console.log(`[mcp] ${body.server} / ${body.tool}`)
-      return { type: 'mcp_call', server: body.server, tool: body.tool, agentId: record.id, timestamp: Date.now() }
+      return { type: 'mcp_call', server: body.server, tool: body.tool, agentId: body.agentId ?? record.id, timestamp: Date.now() }
     }
 
     case 'mcp_done': {
@@ -673,7 +673,7 @@ function processEvent(body) {
           activeAgents.delete(id)
         }
       }
-      return { type: 'mcp_done', server: body.server, timestamp: Date.now() }
+      return { type: 'mcp_done', server: body.server, agentId: body.agentId, timestamp: Date.now() }
     }
 
     default:
