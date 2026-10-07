@@ -125,6 +125,8 @@ Claude Code ──hook──> Express Server ──WebSocket──> React Fronte
 
 GitHub Actions builds a self-contained Apple Silicon DMG. The packaged app includes the UI, local WebSocket/Express server, SQLite support, and the Codex relay — users do **not** need Node.js, Python, npm, or git.
 
+The desktop UI fills the window when you resize or enter fullscreen; no outer black margins remain. On macOS, the title-bar traffic lights are native system controls (close, minimize, fullscreen). The gear opens personalization, and **AUTO** cycles automatic/day/night mode.
+
 After installing the DMG:
 
 1. Drag **Agent Office.app** to Applications.

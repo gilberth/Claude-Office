@@ -312,18 +312,31 @@ async function createWindow() {
     }
   }
 
-  const { width: screenW } = screen.getPrimaryDisplay().workAreaSize
+  // The renderer fills the window. Do not create a small viewport around
+  // the old fixed-size 1056×682 HTML card: that left an enormous black gutter.
+  // Fit the default window entirely inside the usable display bounds.
+  const { workArea } = screen.getPrimaryDisplay()
+  const windowWidth = Math.min(1080, Math.max(640, workArea.width - 24))
+  const windowHeight = Math.min(740, Math.max(480, workArea.height - 24))
 
   win = new BrowserWindow({
-    width: 520,
-    height: 720,
-    x: screenW - 400,
-    y: 20,
+    width: windowWidth,
+    height: windowHeight,
+    x: workArea.x + Math.round((workArea.width - windowWidth) / 2),
+    y: workArea.y + Math.round((workArea.height - windowHeight) / 2),
+    minWidth: 640,
+    minHeight: 480,
     alwaysOnTop: true,
-    frame: false,
+    // Real macOS traffic-light buttons: close, minimize and zoom/fullscreen.
+    // Unlike the previous three decorative <div>s, these actually work.
+    frame: true,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 14 } : undefined,
     transparent: false,
     resizable: true,
     minimizable: true,
+    maximizable: true,
+    fullscreenable: true,
     skipTaskbar: false,
     backgroundColor: '#0a0a0f',
     hasShadow: true,
