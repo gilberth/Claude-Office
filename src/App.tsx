@@ -1768,7 +1768,7 @@ const App: React.FC = () => {
         <div className="title-bar-dot" style={{ background: '#ff5f57' }} />
         <div className="title-bar-dot" style={{ background: '#febc2e' }} />
         <div className="title-bar-dot" style={{ background: '#28c840' }} />
-        <span className="title-bar-text">CLAUDE CODE — AGENT OFFICE</span>
+        <span className="title-bar-text">CODEX + CLAUDE — AGENT OFFICE</span>
         <button
           className="title-bar-daynight"
           onClick={() => setDayNightMode(prev =>
