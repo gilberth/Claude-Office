@@ -35,6 +35,20 @@ import {
   assignCharacterToRole, releaseRole, nextUnusedOfficeCharacter, displayNameFromSlug,
 } from './theme'
 
+interface CodexDiagnostics {
+  received: number
+  emitted: number
+  ignored: number
+  invalid: number
+  lastHookEvent: string | null
+  lastHookAt: number | null
+  lastHookAgeMs: number | null
+  lastTool: string | null
+  lastAgent: string | null
+  recent: boolean
+  recentSessions: number
+}
+
 // ---------------------------------------------------------------------------
 // Placement helper — loaded via ?helper query param
 // ---------------------------------------------------------------------------
@@ -297,6 +311,33 @@ const App: React.FC = () => {
   ]))
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [codexDiagnostics, setCodexDiagnostics] = useState<CodexDiagnostics | null>(null)
+  const [diagnosticsReachable, setDiagnosticsReachable] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    const refresh = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:3334/diagnostics', {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(1500),
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = await response.json() as { codex?: CodexDiagnostics }
+        if (!mounted) return
+        setCodexDiagnostics(data.codex ?? null)
+        setDiagnosticsReachable(true)
+      } catch {
+        if (mounted) setDiagnosticsReachable(false)
+      }
+    }
+    void refresh()
+    const timer = setInterval(() => { void refresh() }, 2500)
+    return () => {
+      mounted = false
+      clearInterval(timer)
+    }
+  }, [])
 
   useEffect(() => {
     // Keep legacy config consumers and already-rendered agents/messages in sync
@@ -661,6 +702,17 @@ const App: React.FC = () => {
           })
 
           return [...prev, agent]
+        }
+
+        // ── Turn/session completed: the primary assistant is now idle ───────
+        case 'agent_idle': {
+          const id = event.agentId ?? event.agent?.id
+          if (!id) return prev
+          return prev.map(agent =>
+            agent.id === id
+              ? { ...agent, state: 'idle' as const, statusText: event.status ?? 'idle' }
+              : agent
+          )
         }
 
         // ── Agent started working / status update ──────────────────────────
@@ -1828,6 +1880,26 @@ const App: React.FC = () => {
         </button>
         <span className="title-bar-phase">{getPhaseLabel(effectivePhase)}</span>
       </div>
+
+      {!isSimMode && (
+        <div
+          className="codex-hook-status"
+          title="Shows actual hook events received by the local backend. It is not a Codex App connection indicator; manual tests also count."
+        >
+          <span className={`codex-hook-light ${!diagnosticsReachable ? 'offline' : codexDiagnostics?.recent ? 'recent' : 'waiting'}`} />
+          <strong>
+            {!diagnosticsReachable
+              ? 'Backend offline'
+              : codexDiagnostics?.recent
+                ? 'Codex hooks recent'
+                : 'Codex hooks not active'}
+          </strong>
+          <span>Hooks: {codexDiagnostics?.received ?? 0}</span>
+          <span>Last: {codexDiagnostics?.lastHookEvent ?? '—'}</span>
+          <span>Tool: {codexDiagnostics?.lastTool ?? '—'}</span>
+          <span>Sessions: {codexDiagnostics?.recentSessions ?? 0}</span>
+        </div>
+      )}
 
       <div className="app-body">
       <div className="office-view">
