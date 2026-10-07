@@ -140,12 +140,12 @@ const SlackChat: React.FC<SlackChatProps> = ({ messages, muted, volume, onToggle
           <div
             className={`slack-cron-toggle ${cronPaused ? 'paused' : 'active'}`}
             onClick={toggleCron}
-            title={cronPaused ? 'Chat monitor paused — click to resume' : 'Chat monitor active — click to pause'}
+            title={cronPaused ? 'Office chat watcher paused (not Codex hooks)' : 'Office chat watcher active (not Codex hooks)'}
           >
             <div className="slack-cron-track">
               <div className="slack-cron-thumb" />
             </div>
-            <span className="slack-cron-label">{cronPaused ? 'AI Off' : 'AI On'}</span>
+            <span className="slack-cron-label">{cronPaused ? 'CHAT OFF' : 'CHAT ON'}</span>
           </div>
           <button className="slack-mute-btn" onClick={onToggleMute}>
             {muted ? '🔇' : volume < 0.4 ? '🔈' : '🔊'}
