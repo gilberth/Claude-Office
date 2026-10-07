@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test Codex hook mapping
+        run: npm run test:codex
+
       - name: Rebuild native modules for Electron ARM64
         run: npm run rebuild:electron:arm64
 
