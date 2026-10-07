@@ -38,7 +38,7 @@ export interface Agent {
 }
 
 export interface OfficeEvent {
-  type: 'agent_spawned' | 'agent_working' | 'agent_completed' | 'mcp_call' | 'mcp_done' | 'new_hire' | 'chat_message' | 'chat_typing' | 'chat_reaction' | 'chat_seen'
+  type: 'agent_spawned' | 'agent_working' | 'agent_idle' | 'agent_completed' | 'mcp_call' | 'mcp_done' | 'new_hire' | 'chat_message' | 'chat_typing' | 'chat_reaction' | 'chat_seen'
   agent?: Partial<Agent>
   agentId?: string
   status?: string
