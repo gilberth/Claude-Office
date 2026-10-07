@@ -1222,3 +1222,144 @@
   pointer-events: none;
   z-index: 3;
 }
+
+
+/* ===== SETTINGS ===== */
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 10, 0.72);
+  backdrop-filter: blur(5px);
+  -webkit-app-region: no-drag;
+}
+
+.settings-modal {
+  width: 360px;
+  max-width: calc(100% - 32px);
+  background: #15171b;
+  border: 1px solid #34383f;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  color: #e6e7e9;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f3f4f6;
+}
+
+.settings-subtitle {
+  margin-top: 4px;
+  font-size: 9px;
+  line-height: 1.5;
+  color: #7f858e;
+}
+
+.settings-close {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #353a42;
+  border-radius: 6px;
+  background: #1d2025;
+  color: #aeb4bd;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 20px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.settings-field > span,
+.settings-preview > span {
+  font-size: 9px;
+  color: #8b919b;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.settings-field input,
+.settings-field select {
+  width: 100%;
+  height: 36px;
+  border: 1px solid #343941;
+  border-radius: 7px;
+  background: #0f1115;
+  color: #e7e9ed;
+  padding: 0 10px;
+  outline: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.settings-field input:focus,
+.settings-field select:focus {
+  border-color: #2bac76;
+  box-shadow: 0 0 0 2px rgba(43, 172, 118, 0.12);
+}
+
+.settings-preview {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  margin-top: 16px;
+  padding: 9px 10px;
+  border: 1px solid #2b2f35;
+  border-radius: 7px;
+  background: #101216;
+  font-size: 10px;
+}
+
+.settings-preview strong {
+  color: #dfe3e8;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.settings-primary,
+.settings-secondary {
+  min-width: 84px;
+  height: 34px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+.settings-primary {
+  border: 1px solid #35c786;
+  background: #2bac76;
+  color: #07110d;
+  font-weight: 700;
+}
+
+.settings-secondary {
+  border: 1px solid #343941;
+  background: #1a1d22;
+  color: #adb3bc;
+}

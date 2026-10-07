@@ -21,7 +21,8 @@ type OfficeConfig = {
 // the production bundle remains compatible with Electron's Vite target.
 const userConfig = userConfigJson as OfficeConfig
 
-const bossName   = userConfig.boss?.name   ?? 'Boss'
+const configuredBossName = userConfig.boss?.name?.trim()
+const bossName   = configuredBossName && configuredBossName.toLowerCase() !== 'yourname' ? configuredBossName : 'Boss'
 const bossSprite = userConfig.boss?.sprite ?? 'Me-1'
 const bossColor  = userConfig.boss?.color  ?? '#ff4444'
 const bossEmoji  = userConfig.boss?.emoji  ?? '👑'

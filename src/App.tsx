@@ -24,7 +24,9 @@ import {
   coffeeMessage,
   waterMessage,
 } from './agentManager'
-import { BOSS_ROLE, BOSS_NAME } from './config'
+import { BOSS_ROLE } from './config'
+import { hasSavedPreferences, loadPreferences, savePreferences, type OfficePreferences } from './preferences'
+import SettingsModal from './components/SettingsModal'
 import { pickEvent } from './events'
 import { getInteraction } from './interactions'
 import {
@@ -92,17 +94,17 @@ function computePath(
 const FILING_ROLES = new Set(['Explore', 'general-purpose'])
 
 // The boss — always in the office, permanent desk (spot-1)
-const BOSS_ID = `boss-${BOSS_NAME.toLowerCase()}`
+const BOSS_ID = 'boss-local'
 const BOSS_SPOT = MAIN_ROOM.agentSpots.find(s => s.id === 'spot-1') ?? MAIN_ROOM.agentSpots.find(s => s.type === 'desk') ?? null
 
-function createBoss(): Agent {
+function createBoss(preferences: OfficePreferences): Agent {
   const cfg = AGENT_CONFIGS[BOSS_ROLE] ?? AGENT_CONFIGS['default']
   const spot = BOSS_SPOT ?? { id: 'spot-temp', type: 'desk' as const, x: 28.9, y: 66 }
   const entry = MAIN_ROOM.entryPoint
   const target = { x: spot.x, y: spot.y }
   return {
     id: BOSS_ID,
-    name: cfg.title,
+    name: preferences.bossName,
     type: 'subagent',
     role: BOSS_ROLE,
     state: 'new-hire',
@@ -122,19 +124,19 @@ function createBoss(): Agent {
   }
 }
 
-// Claude — the assistant, always in the office at spot-2
-const CLAUDE_ID = 'assistant-claude'
+// Primary assistant — Codex or Claude, configurable at runtime.
+const CLAUDE_ID = 'assistant-primary'
 const CLAUDE_ROLE = 'assistant'
 const CLAUDE_SPOT = MAIN_ROOM.agentSpots.find(s => s.id === 'spot-2') ?? null
 
-function createClaude(): Agent {
+function createClaude(preferences: OfficePreferences): Agent {
   const cfg = AGENT_CONFIGS[CLAUDE_ROLE] ?? AGENT_CONFIGS['default']
   const spot = CLAUDE_SPOT ?? { id: 'spot-2', type: 'desk' as const, x: 37.9, y: 68.2, spriteFacing: 'rear-right' as const }
   const entry = MAIN_ROOM.entryPoint
   const target = { x: spot.x, y: spot.y }
   return {
     id: CLAUDE_ID,
-    name: cfg.title,
+    name: preferences.assistantName,
     type: 'subagent',
     role: CLAUDE_ROLE,
     state: 'new-hire',
@@ -145,7 +147,7 @@ function createClaude(): Agent {
     assignedRoom: 'main-office',
     assignedSpotId: spot.id,
     spriteFacing: spot.spriteFacing,
-    task: 'Office assistant',
+    task: `${preferences.provider === 'codex' ? 'Codex' : 'Claude'} assistant`,
     statusText: 'clocked in',
     color: cfg.color,
     emoji: cfg.emoji,
@@ -283,13 +285,52 @@ const OFFICE_SIM_CHATTER = [
 const App: React.FC = () => {
   // All hooks must be at the top — before any conditional returns.
   const theme = useTheme() // Why: re-render rooms + agents when /the-office toggles
-  const [agents, setAgents] = useState<Agent[]>(() => [createBoss(), createClaude()])
+  const [preferences, setPreferences] = useState<OfficePreferences>(() => loadPreferences())
+  const [settingsOpen, setSettingsOpen] = useState(() => !hasSavedPreferences())
+  const [agents, setAgents] = useState<Agent[]>(() => {
+    const initial = loadPreferences()
+    return [createBoss(initial), createClaude(initial)]
+  })
   const agentMetaRef = useRef<Map<string, AgentMeta>>(new Map([
     [BOSS_ID, { spawnedAt: Date.now(), arrivedAtDeskAt: Date.now(), idleSince: null, onBreak: false, breakStartedAt: null }],
     [CLAUDE_ID, { spawnedAt: Date.now(), arrivedAtDeskAt: Date.now(), idleSince: null, onBreak: false, breakStartedAt: null }],
   ]))
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
+
+  useEffect(() => {
+    // Keep legacy config consumers and already-rendered agents/messages in sync
+    // with runtime preferences. This avoids recompiling the app just to rename
+    // the boss or switch the primary assistant between Codex and Claude.
+    if (AGENT_CONFIGS[BOSS_ROLE]) AGENT_CONFIGS[BOSS_ROLE].title = preferences.bossName
+    if (AGENT_CONFIGS['assistant']) AGENT_CONFIGS['assistant'].title = preferences.assistantName
+    _setTheme(preferences.theme)
+
+    setAgents(prev => prev.map(agent => {
+      if (agent.id === BOSS_ID) return { ...agent, name: preferences.bossName }
+      if (agent.id === CLAUDE_ID) {
+        return {
+          ...agent,
+          name: preferences.assistantName,
+          task: `${preferences.provider === 'codex' ? 'Codex' : 'Claude'} assistant`,
+        }
+      }
+      return agent
+    }))
+
+    setMessages(prev => prev.map(message => {
+      if (message.senderSprite === BOSS_ROLE) return { ...message, sender: preferences.bossName }
+      if (message.senderSprite === 'assistant') return { ...message, sender: preferences.assistantName }
+      return message
+    }))
+  }, [preferences])
+
+  const handleSavePreferences = useCallback((next: OfficePreferences) => {
+    savePreferences(next)
+    setPreferences(next)
+    setSettingsOpen(false)
+  }, [])
+
   const [chatTypingUser, setChatTypingUser] = useState<string | null>(null)
   const [lastSeenId, setLastSeenId] = useState<number | null>(null)
   const [muted, setMuted] = useState(false)
@@ -1768,7 +1809,14 @@ const App: React.FC = () => {
         <div className="title-bar-dot" style={{ background: '#ff5f57' }} />
         <div className="title-bar-dot" style={{ background: '#febc2e' }} />
         <div className="title-bar-dot" style={{ background: '#28c840' }} />
-        <span className="title-bar-text">CODEX + CLAUDE — AGENT OFFICE</span>
+        <span className="title-bar-text">{preferences.provider.toUpperCase()} — AGENT OFFICE</span>
+        <button
+          className="title-bar-daynight"
+          onClick={() => setSettingsOpen(true)}
+          title="Settings"
+        >
+          ⚙
+        </button>
         <button
           className="title-bar-daynight"
           onClick={() => setDayNightMode(prev =>
@@ -1935,6 +1983,15 @@ const App: React.FC = () => {
         }}
       />
       </div>
+
+      {settingsOpen && (
+        <SettingsModal
+          preferences={preferences}
+          firstRun={!hasSavedPreferences()}
+          onSave={handleSavePreferences}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   )
 }
