@@ -77,6 +77,6 @@ export const AGENT_CONFIGS: Record<string, { color: string; emoji: string; title
   'seo':                   { color: '#4caf50', emoji: '📊', title: 'SEO' },
   'gmail':                 { color: '#ea4335', emoji: '📧', title: 'Gmail' },
   'ios-simulator':         { color: '#a2aaad', emoji: '📱', title: 'iOS' },
-  'assistant':             { color: '#cc785c', emoji: '🤖', title: 'Claude' },
+  'assistant':             { color: '#cc785c', emoji: '🤖', title: 'Codex' },
   'default':               { color: '#95a5a6', emoji: '👤', title: 'Worker' },
 }
