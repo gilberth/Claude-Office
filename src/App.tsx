@@ -1858,9 +1858,8 @@ const App: React.FC = () => {
   return (
     <div className="app-wrapper">
       <div className="title-bar">
-        <div className="title-bar-dot" style={{ background: '#ff5f57' }} />
-        <div className="title-bar-dot" style={{ background: '#febc2e' }} />
-        <div className="title-bar-dot" style={{ background: '#28c840' }} />
+        {/* Native macOS traffic lights are provided by Electron (hiddenInset).
+            No fake red/yellow/green circles: those never handled clicks. */}
         <span className="title-bar-text">{preferences.provider.toUpperCase()} — AGENT OFFICE</span>
         <button
           className="title-bar-daynight"
