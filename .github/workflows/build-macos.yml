@@ -43,6 +43,12 @@ jobs:
       - name: Rebuild native modules for Electron ARM64
         run: npm run rebuild:electron:arm64
 
+      - name: Prepare default office config
+        run: |
+          if [ ! -f office.config.json ]; then
+            cp office.config.example.json office.config.json
+          fi
+
       - name: Build Agent Office DMG
         run: npm run build:mac:arm64
 
