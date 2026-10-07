@@ -141,6 +141,7 @@ function stopServer() {
 const CODEX_HOOK_EVENTS = [
   'SubagentStart',
   'SubagentStop',
+  'UserPromptSubmit',
   'PreToolUse',
   'PostToolUse',
   'PermissionRequest',
@@ -176,7 +177,8 @@ function hasCodexIntegration() {
   try {
     const data = JSON.parse(fs.readFileSync(hooksFile, 'utf8'))
     const hooks = data?.hooks ?? {}
-    return CODEX_HOOK_EVENTS.some((eventName) =>
+    // Treat incomplete older integrations as needing a one-click update.
+    return CODEX_HOOK_EVENTS.every((eventName) =>
       Array.isArray(hooks[eventName]) &&
       hooks[eventName].some((group) =>
         Array.isArray(group?.hooks) &&
@@ -260,7 +262,7 @@ async function maybeOfferCodexIntegration() {
     title: 'Connect OpenAI Codex',
     message: 'Connect Agent Office to Codex App and Codex CLI?',
     detail:
-      'Agent Office will add lifecycle hooks to ~/.codex/hooks.json, keep a timestamped backup, and install a small local relay under ~/.agent-office/bin. No Node.js or Python installation is required.',
+      'Agent Office will install or update its own hooks in ~/.codex/hooks.json, preserving your existing Orca/other hooks and keeping a timestamped backup. No Node.js or Python installation is required.',
     buttons: ['Connect Codex', 'Not now'],
     defaultId: 0,
     cancelId: 1,
