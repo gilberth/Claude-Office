@@ -166,7 +166,7 @@ function relaySourcePath() {
 
 function codexHookCommand() {
   const relay = relayInstallPath().replace(/"/g, '\\"')
-  return `bash "${relay}"`
+  return `/bin/bash "${relay}"`
 }
 
 function hasCodexIntegration() {
