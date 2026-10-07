@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { addMessage, getMessages, markSeen, addReaction } from './chat-db.js'
 import db from './chat-db.js'
+import { normalizeCodexHook } from './codex-normalizer.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -153,10 +154,39 @@ function resolveAgentId(agent) {
 const KNOWN_EVENT_TYPES = new Set([
   'agent_spawned',
   'agent_working',
+  'agent_idle',
   'agent_completed',
   'mcp_call',
   'mcp_done',
 ])
+
+// Counts start when the Agent Office backend starts; nothing is inferred from
+// an open WebSocket or from ambient office animations.
+const codexTelemetry = {
+  received: 0,
+  emitted: 0,
+  ignored: 0,
+  invalid: 0,
+  lastHookEvent: null,
+  lastHookAt: null,
+  lastTool: null,
+  lastAgent: null,
+}
+const recentCodexSessions = new Map()
+
+function codexDiagnostics() {
+  const now = Date.now()
+  const cutoff = now - 15 * 60 * 1000
+  for (const [id, ts] of recentCodexSessions) {
+    if (ts < cutoff) recentCodexSessions.delete(id)
+  }
+  return {
+    ...codexTelemetry,
+    recentSessions: recentCodexSessions.size,
+    recent: codexTelemetry.lastHookAt !== null && now - codexTelemetry.lastHookAt < 90_000,
+    lastHookAgeMs: codexTelemetry.lastHookAt === null ? null : now - codexTelemetry.lastHookAt,
+  }
+}
 
 const MAX_STRING_LEN = 200
 
@@ -204,7 +234,23 @@ app.options('*', (_req, res) => res.sendStatus(204))
 
 // Health check
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', agents: activeAgents.size, clients: wss?.clients.size ?? 0 })
+  res.json({
+    status: 'ok',
+    agents: activeAgents.size,
+    clients: wss?.clients.size ?? 0,
+    codexHooksReceived: codexTelemetry.received,
+    lastCodexHookAt: codexTelemetry.lastHookAt,
+  })
+})
+
+// Read-only diagnostic status. Never includes hook tool_input or prompt contents.
+app.get('/diagnostics', (_req, res) => {
+  res.json({
+    server: 'online',
+    clients: wss?.clients.size ?? 0,
+    activeAgents: activeAgents.size,
+    codex: codexDiagnostics(),
+  })
 })
 
 // MCP server roster
@@ -239,185 +285,9 @@ function requireEventToken(req, res) {
   return true
 }
 
-function codexRole(agentType) {
-  if (!agentType) return 'general-purpose'
-  const normalized = String(agentType).trim().toLowerCase().replace(/_/g, '-')
-  const aliases = {
-    explore: 'Explore',
-    explorer: 'Explore',
-    general: 'general-purpose',
-    'general-purpose': 'general-purpose',
-    worker: 'general-purpose',
-    default: 'general-purpose',
-    reviewer: 'code-reviewer',
-    'code-reviewer': 'code-reviewer',
-    frontend: 'frontend-developer',
-    'frontend-developer': 'frontend-developer',
-    fullstack: 'fullstack-developer',
-    'fullstack-developer': 'fullstack-developer',
-    tester: 'test-engineer',
-    'test-engineer': 'test-engineer',
-    security: 'security-auditor',
-    'security-auditor': 'security-auditor',
-    architect: 'architect-reviewer',
-    'architect-reviewer': 'architect-reviewer',
-    devops: 'devops-engineer',
-    'devops-engineer': 'devops-engineer',
-    dba: 'database-architect',
-    'database-architect': 'database-architect',
-    typescript: 'typescript-pro',
-    'typescript-pro': 'typescript-pro',
-    ai: 'ai-engineer',
-    'ai-engineer': 'ai-engineer',
-    debugger: 'debugger',
-  }
-  return aliases[normalized] ?? 'general-purpose'
-}
-
-function codexDisplayName(role, agentType, agentId) {
-  const names = {
-    Explore: 'Explorer',
-    'general-purpose': 'Codex Agent',
-    'code-reviewer': 'Reviewer',
-    'frontend-developer': 'Frontend',
-    'fullstack-developer': 'Fullstack',
-    'test-engineer': 'Tester',
-    'security-auditor': 'Security',
-    'architect-reviewer': 'Architect',
-    'devops-engineer': 'DevOps',
-    'database-architect': 'DBA',
-    'typescript-pro': 'TS Pro',
-    'ai-engineer': 'AI Eng',
-    debugger: 'Debugger',
-  }
-  return names[role] ?? agentType ?? (agentId ? `Codex ${String(agentId).slice(-6)}` : 'Codex Agent')
-}
-
-function shortValue(value, max = 120) {
-  if (value == null) return ''
-  let text
-  if (typeof value === 'string') {
-    text = value
-  } else {
-    try { text = JSON.stringify(value) } catch { text = String(value) }
-  }
-  return text.replace(/\\s+/g, ' ').trim().slice(0, max)
-}
-
-function parseMcpToolName(toolName) {
-  if (typeof toolName !== 'string' || !toolName.startsWith('mcp__')) return null
-  const stripped = toolName.slice('mcp__'.length)
-  const splitAt = stripped.indexOf('__')
-  if (splitAt < 1) return null
-  return {
-    server: stripped.slice(0, splitAt),
-    tool: stripped.slice(splitAt + 2),
-  }
-}
-
-function codexToolStatus(toolName, toolInput) {
-  const name = String(toolName ?? '')
-  const lower = name.toLowerCase()
-  const input = toolInput && typeof toolInput === 'object' ? toolInput : {}
-
-  if (lower.includes('shell') || ['bash', 'exec_command', 'command'].includes(lower)) {
-    const command = input.command ?? input.cmd ?? input.script ?? ''
-    return command ? `terminal: ${shortValue(command, 72)}` : 'using terminal'
-  }
-  if (lower === 'apply_patch' || lower.includes('patch')) return 'editing code'
-  if (lower.includes('read')) {
-    const file = input.file_path ?? input.path ?? ''
-    return file ? `reading ${String(file).split('/').pop()}` : 'reading files'
-  }
-  if (lower.includes('write') || lower.includes('edit')) {
-    const file = input.file_path ?? input.path ?? ''
-    return file ? `editing ${String(file).split('/').pop()}` : 'editing files'
-  }
-  if (lower.includes('search') || lower.includes('grep') || lower.includes('find')) {
-    const query = input.query ?? input.pattern ?? ''
-    return query ? `searching: ${shortValue(query, 60)}` : 'searching'
-  }
-  if (lower.includes('web')) return 'researching on the web'
-  return `using ${name || 'tool'}`
-}
-
-function normalizeCodexHook(payload) {
-  const event = payload?.hook_event_name
-  const agentId = payload?.agent_id
-  const agentType = payload?.agent_type
-  const sessionId = payload?.session_id
-  const turnId = payload?.turn_id
-  const model = payload?.model
-
-  if (event === 'SubagentStart') {
-    const role = codexRole(agentType)
-    return {
-      type: 'agent_spawned',
-      provider: 'codex',
-      sessionId,
-      turnId,
-      model,
-      agent: {
-        id: agentId,
-        name: codexDisplayName(role, agentType, agentId),
-        role,
-        task: `${agentType || 'subagent'} · ${model || 'Codex'}`,
-        provider: 'codex',
-        model,
-      },
-    }
-  }
-
-  if (event === 'SubagentStop') {
-    return {
-      type: 'agent_completed',
-      provider: 'codex',
-      sessionId,
-      turnId,
-      agentId,
-      result: shortValue(payload?.last_assistant_message || 'completed', 180) || 'completed',
-    }
-  }
-
-  if (['PreToolUse', 'PostToolUse', 'PermissionRequest'].includes(event)) {
-    const toolName = payload?.tool_name ?? ''
-    const mcp = parseMcpToolName(toolName)
-
-    if (mcp) {
-      return {
-        type: event === 'PostToolUse' ? 'mcp_done' : 'mcp_call',
-        provider: 'codex',
-        sessionId,
-        turnId,
-        agentId,
-        server: mcp.server,
-        tool: mcp.tool,
-      }
-    }
-
-    if (!agentId) return null
-
-    const status =
-      event === 'PermissionRequest'
-        ? `waiting for approval: ${toolName || 'tool'}`
-        : event === 'PostToolUse'
-          ? `finished ${toolName || 'tool'}`
-          : codexToolStatus(toolName, payload?.tool_input)
-
-    return {
-      type: 'agent_working',
-      provider: 'codex',
-      sessionId,
-      turnId,
-      agentId,
-      status,
-    }
-  }
-
-  // Session-level events are useful for diagnostics but do not identify a
-  // concrete subagent, so the office does not render a fake worker for them.
-  return null
-}
+// Codex hook payload translation lives in ./codex-normalizer.js and is
+// exercised by the native Node test runner. Never drop main-thread tool
+// events merely because Codex does not provide an agent_id.
 
 app.post('/event', (req, res) => {
   if (!requireEventToken(req, res)) return
@@ -464,19 +334,46 @@ app.post('/event', (req, res) => {
 app.post('/codex-event', (req, res) => {
   if (!requireEventToken(req, res)) return
 
-  const normalized = normalizeCodexHook(req.body)
-  if (!normalized) {
+  const payload = req.body
+  const hookName = clampString(payload?.hook_event_name, 48) ?? 'unknown'
+  codexTelemetry.received++
+  codexTelemetry.lastHookAt = Date.now()
+  codexTelemetry.lastHookEvent = hookName
+  // Preserve the most recent actual tool after Stop/SessionEnd.
+  if (typeof payload?.tool_name === 'string' && payload.tool_name.trim()) {
+    codexTelemetry.lastTool = clampString(payload.tool_name, 64)
+  }
+  codexTelemetry.lastAgent = typeof payload?.agent_id === 'string' && payload.agent_id
+    ? 'subagent'
+    : 'main'
+
+  if (typeof payload?.session_id === 'string') {
+    if (hookName === 'SessionEnd') recentCodexSessions.delete(payload.session_id)
+    else recentCodexSessions.set(payload.session_id, Date.now())
+  }
+
+  const normalizedEvents = normalizeCodexHook(payload)
+  if (normalizedEvents.length === 0) {
+    codexTelemetry.ignored++
     return res.json({ ok: true, ignored: true })
   }
 
-  const validationError = validateEvent(normalized)
-  if (validationError) {
-    return res.status(400).json({ error: validationError })
+  for (const normalized of normalizedEvents) {
+    const validationError = validateEvent(normalized)
+    if (validationError) {
+      codexTelemetry.invalid++
+      return res.status(400).json({ error: validationError })
+    }
   }
 
-  const event = processEvent(normalized)
-  if (event) broadcast(event)
-  res.json({ ok: true })
+  for (const normalized of normalizedEvents) {
+    const event = processEvent(normalized)
+    if (event) broadcast(event)
+  }
+
+  codexTelemetry.emitted += normalizedEvents.length
+  console.log(`[codex-hook] ${hookName}: ${normalizedEvents.length} event(s)`)
+  res.json({ ok: true, emitted: normalizedEvents.length })
 })
 
 // ---------------------------------------------------------------------------
@@ -711,6 +608,17 @@ function processEvent(body) {
       return { type: 'agent_spawned', agent: record, timestamp: Date.now() }
     }
 
+    case 'agent_idle': {
+      const id = body.agentId
+      if (id && activeAgents.has(id)) {
+        const agent = activeAgents.get(id)
+        agent.state = 'idle'
+        agent.status = body.status ?? 'idle'
+        activeAgents.set(id, agent)
+      }
+      return { type: 'agent_idle', agentId: id, status: body.status ?? 'idle', timestamp: Date.now() }
+    }
+
     case 'agent_working': {
       const id = body.agentId
       if (id && activeAgents.has(id)) {
@@ -758,7 +666,7 @@ function processEvent(body) {
       // Track MCP agents transiently
       activeAgents.set(record.id, record)
       console.log(`[mcp] ${body.server} / ${body.tool}`)
-      return { type: 'mcp_call', server: body.server, tool: body.tool, agentId: record.id, timestamp: Date.now() }
+      return { type: 'mcp_call', server: body.server, tool: body.tool, agentId: body.agentId ?? record.id, timestamp: Date.now() }
     }
 
     case 'mcp_done': {
@@ -768,7 +676,7 @@ function processEvent(body) {
           activeAgents.delete(id)
         }
       }
-      return { type: 'mcp_done', server: body.server, timestamp: Date.now() }
+      return { type: 'mcp_done', server: body.server, agentId: body.agentId, timestamp: Date.now() }
     }
 
     default:

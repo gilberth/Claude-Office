@@ -201,12 +201,33 @@ bash scripts/start-office.sh
 The Codex bridge listens to:
 
 - `SubagentStart` / `SubagentStop` — create and complete office workers
-- `PreToolUse` / `PostToolUse` — update what each subagent is doing
+- `PreToolUse` / `PostToolUse` — update the primary Codex assistant (even without `agent_id`) and individual subagents
 - `PermissionRequest` — show that a subagent is waiting for approval
-- `SessionStart` / `SessionEnd` / `Stop` / `Interrupt` — installed for lifecycle observation; session-level events are not represented as fake workers
+- `SessionStart` / `UserPromptSubmit` / `SessionEnd` / `Stop` / `Interrupt` — update the permanent assistant's ready, thinking and idle states
 - MCP tools named `mcp__<server>__<tool>` — reuse the existing MCP visualization
 
 The installer preserves existing hooks and writes a timestamped backup before changing `~/.codex/hooks.json`.
+
+#### Verify real Codex activity
+
+The status strip under the title bar distinguishes **backend availability** from **recent Codex hook events**. Ambient coffee/pizza/chat animations and the **CHAT ON** switch are not evidence of a Codex connection. The hook counter starts at zero each time the Agent Office server starts.
+
+```bash
+curl -s http://127.0.0.1:3334/health
+curl -s http://127.0.0.1:3334/diagnostics
+```
+
+To verify the relay independently of Codex App/CLI:
+
+```bash
+printf '%s\\n' '{"hook_event_name":"PreToolUse","session_id":"manual-test","tool_name":"exec_command"}' |
+  /bin/bash "$HOME/.agent-office/bin/codex-hook-relay.sh"
+```
+
+After this test, the diagnostic counter should increment, and the permanent assistant should show terminal activity. **This is a manual synthetic hook**, not proof that Codex App fired a hook. To verify automatic delivery, start a fresh Codex turn, use a tool, and confirm the count advances *without* the manual command. If it does not, inspect the Codex hook configuration/trust and restart Codex App.
+
+For unit tests: `npm run test:codex`.
+
 
 Codex hook payloads include stable `agent_id`, `agent_type`, `session_id`, `turn_id`, and `model` fields. Agent Office uses `agent_id` as the worker identity, so parallel subagents can be tracked independently.
 
@@ -217,7 +238,7 @@ The boss character (you) is configurable via `office.config.json`:
 ```json
 {
   "boss": {
-    "name": "YourName",
+    "name": "Boss",
     "sprite": "MyChar-1",
     "color": "#ff4444",
     "emoji": "crown"

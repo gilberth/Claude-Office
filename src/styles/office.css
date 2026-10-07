@@ -1363,3 +1363,51 @@
   background: #1a1d22;
   color: #adb3bc;
 }
+
+
+/* Codex hook telemetry: real hook traffic, deliberately separate from office
+   ambient events and from the chat monitor's ON/OFF switch. */
+.codex-hook-status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 4px 12px;
+  border-bottom: 1px solid #303640;
+  background: #10151d;
+  color: #aeb8c6;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow-x: auto;
+  -webkit-app-region: no-drag;
+}
+
+.codex-hook-status strong {
+  font-weight: 700;
+  color: #d6dce4;
+  flex-shrink: 0;
+}
+
+.codex-hook-status span:not(.codex-hook-light) {
+  flex-shrink: 0;
+  color: #929caa;
+}
+
+.codex-hook-light {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #ef775e;
+}
+
+.codex-hook-light.waiting {
+  background: #dcae56;
+}
+
+.codex-hook-light.recent {
+  background: #3dce85;
+  box-shadow: 0 0 7px rgba(61, 206, 133, 0.35);
+}

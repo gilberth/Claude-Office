@@ -65,6 +65,7 @@ events = [
     "PostToolUse",
     "PermissionRequest",
     "SessionStart",
+    "UserPromptSubmit",
     "SessionEnd",
     "Stop",
     "Interrupt",
@@ -107,7 +108,7 @@ echo ""
 echo "Events:"
 echo "  SubagentStart / SubagentStop"
 echo "  PreToolUse / PostToolUse / PermissionRequest"
-echo "  SessionStart / SessionEnd / Stop / Interrupt"
+echo "  SessionStart / UserPromptSubmit / SessionEnd / Stop / Interrupt"
 echo ""
 echo "Next:"
 echo "  1. Start Agent Office: bash scripts/start-office.sh"
