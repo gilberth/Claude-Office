@@ -17,13 +17,15 @@
     "dev:electron": "concurrently \"vite\" \"sleep 2 && electron .\"",
     "dev:all": "concurrently \"node server/index.js\" \"vite\"",
     "build": "tsc && vite build",
-    "build:electron": "vite build && electron-builder",
-    "pack": "vite build && electron-builder --dir",
+    "build:electron": "npm run build && electron-builder",
+    "pack": "npm run build && electron-builder --dir",
     "electron": "electron .",
     "start": "npm run dev:electron",
     "server": "node server/index.js",
     "install-hooks": "bash hooks/install-hooks.sh",
-    "install-codex-hooks": "bash hooks/install-codex-hooks.sh"
+    "install-codex-hooks": "bash hooks/install-codex-hooks.sh",
+    "build:mac:arm64": "npm run build && electron-builder --mac dmg --arm64",
+    "rebuild:electron:arm64": "electron-builder install-app-deps --arch=arm64"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",
@@ -54,8 +56,8 @@
       "dist/**",
       "electron/**",
       "server/**",
-      "public/**",
-      "node_modules/**"
+      "node_modules/**",
+      "package.json"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -65,13 +67,14 @@
     },
     "extraResources": [
       {
-        "from": "server",
-        "to": "server"
-      },
-      {
-        "from": "public",
-        "to": "public"
+        "from": "hooks/codex-hook-relay.sh",
+        "to": "bin/codex-hook-relay.sh"
       }
-    ]
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   }
 }

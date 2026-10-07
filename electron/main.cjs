@@ -1,7 +1,9 @@
 'use strict'
 
-const { app, BrowserWindow, screen } = require('electron')
+const { app, BrowserWindow, screen, dialog } = require('electron')
 const path = require('path')
+const fs = require('fs')
+const os = require('os')
 const { spawn } = require('child_process')
 const http = require('http')
 
@@ -81,21 +83,25 @@ function waitForServer(retries = 30, intervalMs = 300) {
 
 /**
  * Start the Express/WebSocket server as a child process.
- * In packaged builds the server files are placed in process.resourcesPath/server.
+ * In packaged builds the server remains inside app.asar so it can resolve the
+ * bundled node_modules without requiring a system Node.js installation.
  * In dev the files are at <project-root>/server/index.js.
  */
 function startServer() {
   const isDev = !app.isPackaged
 
-  const serverEntry = isDev
-    ? path.join(__dirname, '../server/index.js')
-    : path.join(process.resourcesPath, 'server', 'index.js')
+  const serverEntry = path.join(__dirname, '../server/index.js')
+
+  const runtime = isDev ? 'node' : process.execPath
+  const env = isDev
+    ? { ...process.env }
+    : { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
 
   console.log('[main] Spawning server:', serverEntry)
 
-  serverProcess = spawn('node', [serverEntry], {
+  serverProcess = spawn(runtime, [serverEntry], {
     stdio: 'pipe',
-    env: { ...process.env },
+    env,
   })
 
   serverProcess.stdout.on('data', (data) => {
@@ -125,6 +131,162 @@ function stopServer() {
     console.log('[main] Stopping server process...')
     serverProcess.kill('SIGTERM')
     serverProcess = null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Codex integration
+// ---------------------------------------------------------------------------
+
+const CODEX_HOOK_EVENTS = [
+  'SubagentStart',
+  'SubagentStop',
+  'PreToolUse',
+  'PostToolUse',
+  'PermissionRequest',
+  'SessionStart',
+  'SessionEnd',
+  'Stop',
+  'Interrupt',
+]
+
+function codexHome() {
+  return process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+}
+
+function relayInstallPath() {
+  return path.join(os.homedir(), '.agent-office', 'bin', 'codex-hook-relay.sh')
+}
+
+function relaySourcePath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'bin', 'codex-hook-relay.sh')
+    : path.join(__dirname, '..', 'hooks', 'codex-hook-relay.sh')
+}
+
+function codexHookCommand() {
+  const relay = relayInstallPath().replace(/"/g, '\\"')
+  return `bash "${relay}"`
+}
+
+function hasCodexIntegration() {
+  const hooksFile = path.join(codexHome(), 'hooks.json')
+  if (!fs.existsSync(hooksFile)) return false
+
+  try {
+    const data = JSON.parse(fs.readFileSync(hooksFile, 'utf8'))
+    const hooks = data?.hooks ?? {}
+    return CODEX_HOOK_EVENTS.some((eventName) =>
+      Array.isArray(hooks[eventName]) &&
+      hooks[eventName].some((group) =>
+        Array.isArray(group?.hooks) &&
+        group.hooks.some((hook) =>
+          typeof hook?.command === 'string' &&
+          hook.command.includes('codex-hook-relay.sh')
+        )
+      )
+    )
+  } catch {
+    return false
+  }
+}
+
+function installCodexIntegration() {
+  const home = codexHome()
+  const hooksFile = path.join(home, 'hooks.json')
+  const relaySrc = relaySourcePath()
+  const relayDst = relayInstallPath()
+
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(path.dirname(relayDst), { recursive: true })
+
+  if (!fs.existsSync(relaySrc)) {
+    throw new Error(`Bundled Codex relay not found: ${relaySrc}`)
+  }
+
+  fs.copyFileSync(relaySrc, relayDst)
+  fs.chmodSync(relayDst, 0o755)
+
+  let config = {}
+  if (fs.existsSync(hooksFile)) {
+    const raw = fs.readFileSync(hooksFile, 'utf8')
+    try {
+      config = JSON.parse(raw)
+    } catch {
+      throw new Error(`Cannot parse existing Codex hooks file: ${hooksFile}`)
+    }
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    fs.copyFileSync(hooksFile, `${hooksFile}.backup.${stamp}`)
+  }
+
+  if (!config || typeof config !== 'object' || Array.isArray(config)) config = {}
+  if (!config.hooks || typeof config.hooks !== 'object' || Array.isArray(config.hooks)) {
+    config.hooks = {}
+  }
+
+  const command = codexHookCommand()
+
+  for (const eventName of CODEX_HOOK_EVENTS) {
+    if (!Array.isArray(config.hooks[eventName])) config.hooks[eventName] = []
+
+    const present = config.hooks[eventName].some((group) =>
+      Array.isArray(group?.hooks) &&
+      group.hooks.some((hook) => hook?.command === command)
+    )
+
+    if (!present) {
+      config.hooks[eventName].push({
+        hooks: [{
+          type: 'command',
+          command,
+          async: true,
+          timeout: 5,
+        }],
+      })
+    }
+  }
+
+  fs.writeFileSync(hooksFile, JSON.stringify(config, null, 2) + '\n', 'utf8')
+  return hooksFile
+}
+
+async function maybeOfferCodexIntegration() {
+  // Only prompt when Codex appears to be installed/configured on this Mac.
+  if (!fs.existsSync(codexHome()) || hasCodexIntegration()) return
+
+  const result = await dialog.showMessageBox(win, {
+    type: 'question',
+    title: 'Connect OpenAI Codex',
+    message: 'Connect Agent Office to Codex App and Codex CLI?',
+    detail:
+      'Agent Office will add lifecycle hooks to ~/.codex/hooks.json, keep a timestamped backup, and install a small local relay under ~/.agent-office/bin. No Node.js or Python installation is required.',
+    buttons: ['Connect Codex', 'Not now'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  })
+
+  if (result.response !== 0) return
+
+  try {
+    const hooksFile = installCodexIntegration()
+    await dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'Codex connected',
+      message: 'Agent Office is now connected to Codex.',
+      detail:
+        `Hooks installed in ${hooksFile}. Restart Codex App or start a new Codex CLI session. Codex may ask you to review/trust the new command hooks.`,
+      buttons: ['OK'],
+    })
+  } catch (err) {
+    await dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Could not connect Codex',
+      message: 'Agent Office could not install the Codex integration.',
+      detail: err?.message || String(err),
+      buttons: ['OK'],
+    })
   }
 }
 
@@ -191,10 +353,17 @@ async function createWindow() {
   // In dev, load from Vite server; in production, load the built index.html
   const isDev = !app.isPackaged
   if (isDev) {
-    win.loadURL('http://localhost:3333')
+    await win.loadURL('http://localhost:3333')
   } else {
-    win.loadFile(path.join(__dirname, '../dist/index.html'))
+    await win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  // Offer one-click Codex setup after the UI is available.
+  setTimeout(() => {
+    maybeOfferCodexIntegration().catch((err) => {
+      console.error('[main] Codex integration prompt failed:', err)
+    })
+  }, 500)
 
   // Make window level float above everything (like Clippy)
   win.setAlwaysOnTop(true, 'floating')

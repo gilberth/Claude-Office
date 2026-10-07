@@ -15,18 +15,19 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { execFile } from 'child_process'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import { addMessage, getMessages, markSeen, addReaction } from './chat-db.js'
 import db from './chat-db.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const NOTIFY_SCRIPT = join(__dirname, '..', 'scripts', 'notify.sh')
-
 function sendNotification(title, msg) {
+  if (process.platform !== 'darwin') return
   try {
-    const child = execFile('bash', [NOTIFY_SCRIPT, title, msg], { timeout: 3000 })
+    const escapeAppleScript = (value) =>
+      String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+
+    const child = execFile('/usr/bin/osascript', [
+      '-e',
+      `display notification "${escapeAppleScript(msg)}" with title "${escapeAppleScript(title)}"`,
+    ], { timeout: 3000 })
     child.unref()
   } catch {}
 }
@@ -214,13 +215,199 @@ app.get('/roster', (_req, res) => {
  *   { type: "mcp_call",        server, tool, agentId? }
  *   { type: "mcp_done",        server, agentId? }
  */
-app.post('/event', (req, res) => {
-  // Auth check
+
+function requireEventToken(req, res) {
   const authHeader = req.headers['authorization'] ?? ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
   if (token !== AUTH_TOKEN) {
-    return res.status(401).json({ error: 'Unauthorized' })
+    res.status(401).json({ error: 'Unauthorized' })
+    return false
   }
+  return true
+}
+
+function codexRole(agentType) {
+  if (!agentType) return 'general-purpose'
+  const normalized = String(agentType).trim().toLowerCase().replace(/_/g, '-')
+  const aliases = {
+    explore: 'Explore',
+    explorer: 'Explore',
+    general: 'general-purpose',
+    'general-purpose': 'general-purpose',
+    worker: 'general-purpose',
+    default: 'general-purpose',
+    reviewer: 'code-reviewer',
+    'code-reviewer': 'code-reviewer',
+    frontend: 'frontend-developer',
+    'frontend-developer': 'frontend-developer',
+    fullstack: 'fullstack-developer',
+    'fullstack-developer': 'fullstack-developer',
+    tester: 'test-engineer',
+    'test-engineer': 'test-engineer',
+    security: 'security-auditor',
+    'security-auditor': 'security-auditor',
+    architect: 'architect-reviewer',
+    'architect-reviewer': 'architect-reviewer',
+    devops: 'devops-engineer',
+    'devops-engineer': 'devops-engineer',
+    dba: 'database-architect',
+    'database-architect': 'database-architect',
+    typescript: 'typescript-pro',
+    'typescript-pro': 'typescript-pro',
+    ai: 'ai-engineer',
+    'ai-engineer': 'ai-engineer',
+    debugger: 'debugger',
+  }
+  return aliases[normalized] ?? 'general-purpose'
+}
+
+function codexDisplayName(role, agentType, agentId) {
+  const names = {
+    Explore: 'Explorer',
+    'general-purpose': 'Codex Agent',
+    'code-reviewer': 'Reviewer',
+    'frontend-developer': 'Frontend',
+    'fullstack-developer': 'Fullstack',
+    'test-engineer': 'Tester',
+    'security-auditor': 'Security',
+    'architect-reviewer': 'Architect',
+    'devops-engineer': 'DevOps',
+    'database-architect': 'DBA',
+    'typescript-pro': 'TS Pro',
+    'ai-engineer': 'AI Eng',
+    debugger: 'Debugger',
+  }
+  return names[role] ?? agentType ?? (agentId ? `Codex ${String(agentId).slice(-6)}` : 'Codex Agent')
+}
+
+function shortValue(value, max = 120) {
+  if (value == null) return ''
+  let text
+  if (typeof value === 'string') {
+    text = value
+  } else {
+    try { text = JSON.stringify(value) } catch { text = String(value) }
+  }
+  return text.replace(/\\s+/g, ' ').trim().slice(0, max)
+}
+
+function parseMcpToolName(toolName) {
+  if (typeof toolName !== 'string' || !toolName.startsWith('mcp__')) return null
+  const stripped = toolName.slice('mcp__'.length)
+  const splitAt = stripped.indexOf('__')
+  if (splitAt < 1) return null
+  return {
+    server: stripped.slice(0, splitAt),
+    tool: stripped.slice(splitAt + 2),
+  }
+}
+
+function codexToolStatus(toolName, toolInput) {
+  const name = String(toolName ?? '')
+  const lower = name.toLowerCase()
+  const input = toolInput && typeof toolInput === 'object' ? toolInput : {}
+
+  if (lower.includes('shell') || ['bash', 'exec_command', 'command'].includes(lower)) {
+    const command = input.command ?? input.cmd ?? input.script ?? ''
+    return command ? `terminal: ${shortValue(command, 72)}` : 'using terminal'
+  }
+  if (lower === 'apply_patch' || lower.includes('patch')) return 'editing code'
+  if (lower.includes('read')) {
+    const file = input.file_path ?? input.path ?? ''
+    return file ? `reading ${String(file).split('/').pop()}` : 'reading files'
+  }
+  if (lower.includes('write') || lower.includes('edit')) {
+    const file = input.file_path ?? input.path ?? ''
+    return file ? `editing ${String(file).split('/').pop()}` : 'editing files'
+  }
+  if (lower.includes('search') || lower.includes('grep') || lower.includes('find')) {
+    const query = input.query ?? input.pattern ?? ''
+    return query ? `searching: ${shortValue(query, 60)}` : 'searching'
+  }
+  if (lower.includes('web')) return 'researching on the web'
+  return `using ${name || 'tool'}`
+}
+
+function normalizeCodexHook(payload) {
+  const event = payload?.hook_event_name
+  const agentId = payload?.agent_id
+  const agentType = payload?.agent_type
+  const sessionId = payload?.session_id
+  const turnId = payload?.turn_id
+  const model = payload?.model
+
+  if (event === 'SubagentStart') {
+    const role = codexRole(agentType)
+    return {
+      type: 'agent_spawned',
+      provider: 'codex',
+      sessionId,
+      turnId,
+      model,
+      agent: {
+        id: agentId,
+        name: codexDisplayName(role, agentType, agentId),
+        role,
+        task: `${agentType || 'subagent'} · ${model || 'Codex'}`,
+        provider: 'codex',
+        model,
+      },
+    }
+  }
+
+  if (event === 'SubagentStop') {
+    return {
+      type: 'agent_completed',
+      provider: 'codex',
+      sessionId,
+      turnId,
+      agentId,
+      result: shortValue(payload?.last_assistant_message || 'completed', 180) || 'completed',
+    }
+  }
+
+  if (['PreToolUse', 'PostToolUse', 'PermissionRequest'].includes(event)) {
+    const toolName = payload?.tool_name ?? ''
+    const mcp = parseMcpToolName(toolName)
+
+    if (mcp) {
+      return {
+        type: event === 'PostToolUse' ? 'mcp_done' : 'mcp_call',
+        provider: 'codex',
+        sessionId,
+        turnId,
+        agentId,
+        server: mcp.server,
+        tool: mcp.tool,
+      }
+    }
+
+    if (!agentId) return null
+
+    const status =
+      event === 'PermissionRequest'
+        ? `waiting for approval: ${toolName || 'tool'}`
+        : event === 'PostToolUse'
+          ? `finished ${toolName || 'tool'}`
+          : codexToolStatus(toolName, payload?.tool_input)
+
+    return {
+      type: 'agent_working',
+      provider: 'codex',
+      sessionId,
+      turnId,
+      agentId,
+      status,
+    }
+  }
+
+  // Session-level events are useful for diagnostics but do not identify a
+  // concrete subagent, so the office does not render a fake worker for them.
+  return null
+}
+
+app.post('/event', (req, res) => {
+  if (!requireEventToken(req, res)) return
 
   const body = req.body
 
@@ -252,6 +439,30 @@ app.post('/event', (req, res) => {
     broadcast(event)
   }
 
+  res.json({ ok: true })
+})
+
+/**
+ * POST /codex-event — receives the raw JSON payload produced by Codex hooks.
+ *
+ * The relay bundled with the desktop app performs no JSON parsing. Keeping
+ * normalization here lets the installed app work without Python, Node.js or jq.
+ */
+app.post('/codex-event', (req, res) => {
+  if (!requireEventToken(req, res)) return
+
+  const normalized = normalizeCodexHook(req.body)
+  if (!normalized) {
+    return res.json({ ok: true, ignored: true })
+  }
+
+  const validationError = validateEvent(normalized)
+  if (validationError) {
+    return res.status(400).json({ error: validationError })
+  }
+
+  const event = processEvent(normalized)
+  if (event) broadcast(event)
   res.json({ ok: true })
 })
 
