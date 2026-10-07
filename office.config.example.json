@@ -1,6 +1,6 @@
 {
   "boss": {
-    "name": "YourName",
+    "name": "Boss",
     "sprite": "Me-1",
     "color": "#ff4444",
     "emoji": "crown"
