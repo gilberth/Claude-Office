@@ -5,14 +5,21 @@
  * Users can customise their boss name, sprite, and colour there.
  */
 
-// Load user config (office.config.json) — bundled by Vite
-let userConfig: { boss?: { name?: string; sprite?: string; color?: string; emoji?: string } } = {}
-try {
-  // Vite handles JSON imports at build time
-  userConfig = await import('../office.config.json')
-} catch {
-  // Fallback defaults if file missing
+import userConfigJson from '../office.config.json'
+
+type OfficeConfig = {
+  boss?: {
+    name?: string
+    sprite?: string
+    color?: string
+    emoji?: string
+  }
 }
+
+// office.config.json is generated from office.config.example.json by CI when a
+// user-specific file is not present. A static import avoids top-level await so
+// the production bundle remains compatible with Electron's Vite target.
+const userConfig = userConfigJson as OfficeConfig
 
 const bossName   = userConfig.boss?.name   ?? 'Boss'
 const bossSprite = userConfig.boss?.sprite ?? 'Me-1'
