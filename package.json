@@ -24,7 +24,7 @@
     "server": "node server/index.js",
     "install-hooks": "bash hooks/install-hooks.sh",
     "install-codex-hooks": "bash hooks/install-codex-hooks.sh",
-    "build:mac:arm64": "npm run build && electron-builder --mac dmg --arm64",
+    "build:mac:arm64": "npm run build && electron-builder --mac dmg --arm64 --publish never",
     "rebuild:electron:arm64": "electron-builder install-app-deps --arch=arm64"
   },
   "dependencies": {
