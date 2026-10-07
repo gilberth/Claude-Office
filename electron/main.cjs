@@ -350,12 +350,13 @@ async function createWindow() {
     return { action: 'deny' }
   })
 
-  // In dev, load from Vite server; in production, load the built index.html
+  // In production the bundled Express server also serves the renderer. Using
+  // localhost instead of file:// keeps the app's absolute sprite/room URLs valid.
   const isDev = !app.isPackaged
   if (isDev) {
     await win.loadURL('http://localhost:3333')
   } else {
-    await win.loadFile(path.join(__dirname, '../dist/index.html'))
+    await win.loadURL('http://localhost:3334')
   }
 
   // Offer one-click Codex setup after the UI is available.
